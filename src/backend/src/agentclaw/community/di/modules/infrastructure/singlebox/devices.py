@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast  # noqa: UP035 - injector binding key matches provider side
+from typing import Callable, cast  # noqa: UP035 - injector binding key matches provider side
 
 from injector import Binder, Module, inject, provider, singleton
 
@@ -23,12 +23,20 @@ from agentclaw.community.core.devices.services.baas_device_service import (
     BaasDeviceService,
 )
 from agentclaw.community.core.devices.services.device_accessor import DeviceAccessor
+from agentclaw.community.core.devices.services.device_context import DeviceContext
+from agentclaw.community.core.devices.services.device_filesystem import DeviceFileSystem
 from agentclaw.community.core.devices.services.device_service import (
     BAAS_DEVICE_PROVIDER,
     DeviceService,
 )
 from agentclaw.community.core.devices.services.device_service_router import (
     DeviceServiceRouter,
+)
+from agentclaw.community.core.devices.services.device_filesystem_dispatcher import (
+    DeviceFileSystemResolver,
+)
+from agentclaw.community.core.devices.services.device_filesystem_resolver import (
+    DefaultDeviceFileSystemResolver,
 )
 from agentclaw.community.core.notify.protocol import NotifyBotLister
 from agentclaw.community.core.system_config import SystemConfigService
@@ -47,6 +55,9 @@ from agentclaw.community.plugin_api.passport import PassportPlugin
 from agentclaw.community.plugin_api.sandbox_runtime import SandboxRuntimeClient
 from agentclaw.community.di.modules.infrastructure.singlebox.template_config import (
     SingleboxBaasTemplateConfigLifecycle,
+)
+from agentclaw.community.utils.singlebox_coverage_proxy import (
+    wrap_for_singlebox_coverage,
 )
 
 
@@ -96,6 +107,40 @@ class SingleboxDevicesModule(Module):
             to=InMemoryDeviceAdapterTransport,
             scope=singleton,
         )
+
+    @singleton
+    @provider
+    @inject
+    def device_file_system_resolver(
+        self,
+        baas_service: BaasService,
+        bot_repository: BotRepository,
+        binding_repository: DeviceBindingRepository,
+        sandbox_client: SandboxRuntimeClient,
+    ) -> DeviceFileSystemResolver:
+        """Record file-system boundary calls only in the singlebox profile."""
+        delegate = DefaultDeviceFileSystemResolver(
+            baas_service=baas_service,
+            bot_repo=bot_repository,
+            binding_repo=binding_repository,
+            sandbox_client=sandbox_client,
+        )
+
+        def resolve(
+            ctx: DeviceContext, path_mapper: Callable[[str], str]
+        ) -> DeviceFileSystem:
+            device_fs = delegate(ctx, path_mapper)
+            return wrap_for_singlebox_coverage(
+                device_fs,
+                {
+                    "list_dir": "DeviceFileSystem.list_dir",
+                    "read_file": "DeviceFileSystem.read_file",
+                    "write_file": "DeviceFileSystem.write_file",
+                    "delete_file": "DeviceFileSystem.delete_file",
+                },
+            )
+
+        return resolve
 
     @singleton
     @provider
