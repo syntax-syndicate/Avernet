@@ -93,6 +93,166 @@ Changes should preserve or improve the gates described in
 Do not weaken these checks to make a change pass. If a check is wrong, fix the
 check and document why.
 
+## Local Pre-Push And Singlebox Coverage
+
+The repository-local pre-push gate is the local counterpart of required PR CI.
+Its canonical entrypoints are:
+
+- `.githooks/pre-push` for Git's pushed-ref protocol and comparison range
+- `scripts/ci/pre_push.sh` for affected-system dispatch
+- `src/<system>/scripts/ci_test.sh` for each system's test and coverage gate
+- `scripts/ci/singlebox_coverage.sh` for live Singlebox E2E coverage
+
+### Installation
+
+Git does not enable versioned hooks automatically after clone. Install this
+repository's hooks once per repository or worktree:
+
+```bash
+./scripts/install_git_hooks.sh
+git config --get core.hooksPath  # expected: .githooks
+```
+
+Running `scripts/singlebox.sh` also installs the hook idempotently unless
+`OCB_SKIP_GIT_HOOKS=1` is set. That variable only skips automatic installation;
+it does not disable a hook that is already installed.
+
+### Comparison And Dispatch
+
+For each ref being pushed, `.githooks/pre-push` computes:
+
+```text
+base = merge-base(origin/dev, local_sha)
+head = local_sha
+changed files = git diff --name-only base head
+```
+
+This models a PR's complete delta from `dev`, rather than only the commits since
+the last push to the feature branch. If `origin/dev` is unavailable, the hook
+falls back to the remote branch SHA and then to the repository's first commit.
+Only committed content in this range is checked; uncommitted working-tree
+changes are outside a pre-push hook's input.
+
+`scripts/ci/pre_push.sh` dispatches only the gates affected by those paths:
+
+| Changed path | Required local gates |
+| --- | --- |
+| `src/backend/**` | Python SAST, Backend `ci_test.sh`, Singlebox coverage |
+| `src/baas/**` | Python SAST, BaaS `ci_test.sh`, Singlebox coverage |
+| `src/engine/**` | Python SAST, Engine `ci_test.sh` |
+| `src/bcs/**` | BCS `ci_test.sh --fast-fail` |
+| `src/frontend/**` | Frontend `ci_test.sh` |
+| Singlebox orchestration or live E2E paths | Singlebox coverage |
+
+Singlebox-triggering paths include `scripts/singlebox.sh`, `scripts/modules/**`,
+`scripts/ci/singlebox_coverage.sh`, Backend acceptance tests, and BaaS E2E
+tests. If several changed paths request Singlebox coverage, it runs only once
+per `pre_push.sh` invocation.
+
+The local Python SAST narrows its scan to added or modified Python files under
+the affected system. This prevents violations in untouched files from blocking
+a push, but it is file-granular, not line-granular: an existing violation in a
+file changed by the branch can still be reported.
+
+Useful direct checks are:
+
+```bash
+# Show the gates selected by the current branch without executing them.
+scripts/ci/pre_push.sh \
+  --base "$(git merge-base HEAD origin/dev)" --head HEAD --dry-run
+
+# Execute the same local dispatcher directly.
+scripts/ci/pre_push.sh \
+  --base "$(git merge-base HEAD origin/dev)" --head HEAD
+```
+
+Singlebox coverage is required by default. For narrow local diagnosis only, it
+can be skipped explicitly with either
+`OCB_PRE_PUSH_SKIP_SINGLEBOX_COVERAGE=1 git push` or the dispatcher's
+`--skip-singlebox-coverage` option. This bypass does not change required GitHub
+PR checks and must not be used to claim Singlebox validation passed.
+
+### Singlebox Coverage Execution
+
+`scripts/ci/singlebox_coverage.sh` uses this flow:
+
+```text
+singlebox_coverage_modules.yaml
+        |
+        v
+select enabled modules and deduplicate their acceptance targets
+        |
+        v
+setup and start one real standalone Singlebox stack
+        |
+        v
+run all selected live acceptance tests against that shared stack
+        |
+        v
+combine Backend and BaaS process coverage plus Router/Plugin hit evidence
+        |
+        v
+calculate and gate each module independently
+        |
+        v
+write summary, JUnit, coverage, HTML, and dashboard artifacts
+```
+
+The stack and HTTP interactions are real. Model configuration uses mock values
+so the coverage gate does not require external model credentials or claim that
+model responses were validated.
+
+With no module arguments, the runner selects every enabled module under
+`modules` in `scripts/ci/singlebox_coverage_modules.yaml`. A focused run may
+repeat `--module`:
+
+```bash
+# Run every enabled and registered module.
+scripts/ci/singlebox_coverage.sh
+
+# Run selected modules while still sharing one stack startup.
+scripts/ci/singlebox_coverage.sh --module devices --module cron
+```
+
+For each module, the manifest owns:
+
+- `acceptance_targets`: real user-story tests executed against the live stack
+- `core_paths`: the production-code denominator for Core line coverage
+- `router_api` and `plugin_api`: audited API denominators, or an explicit
+  `not_applicable` reason while that denominator is unavailable
+- `thresholds`: the non-regression floor enforced for that module
+
+Any selected module below any applicable threshold fails the whole gate, but
+all selected module errors are reported together. Modules under
+`pending_modules` are visible migration debt and are neither executed nor
+gated until their live scenarios are stable.
+
+Artifacts are written below
+`scripts/.dependencies/coverage/singlebox/reports/`, including:
+
+- `acceptance-junit.xml` and `acceptance.log`
+- Backend and BaaS coverage JSON, text, and HTML reports
+- `summary.json` and `summary.md` with per-module metrics and threshold errors
+- `dashboard.html` with the aggregated module view
+
+### Adding A Coverage Module
+
+When onboarding another module:
+
+1. Add meaningful live acceptance user stories; do not add tests whose only
+   purpose is touching lines.
+2. Register the acceptance target and complete Core/Router/Plugin denominators
+   in `singlebox_coverage_modules.yaml`.
+3. Run the focused module against a freshly started standalone stack and set
+   thresholds to its measured baseline.
+4. Run the default all-module gate to catch shared-stack interference.
+5. Add or update reporter and shell contract tests when manifest or runner
+   behavior changes.
+
+Do not inflate coverage by broadly excluding production Core paths. Coverage
+instrumentation must remain at runtime, adapter, middleware, or composition
+boundaries and must not leak test-only calls into domain Core code.
+
 ## Development Guidelines
 
 Start from the requirement and the existing contract. Keep changes small and
