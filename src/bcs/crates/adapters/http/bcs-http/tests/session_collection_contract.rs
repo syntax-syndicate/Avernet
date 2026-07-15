@@ -623,6 +623,108 @@ async fn human_caller_collect_enforces_participant_and_ownership() {
     );
 }
 
+/// 6. Human caller uncollects via `?participant=<owned-bot>` query string.
+///    The DELETE endpoint reads `participant` from the query (DELETE bodies are
+///    unreliable across proxies); the human must own the named bot. Covers the
+///    ownership check on the uncollect path, which the bot-token tests above do
+///    not exercise.
+#[tokio::test]
+async fn human_caller_uncollect_via_query_enforces_ownership() {
+    let (app, mock, _temp_dir, _registry) = human_app("alice", &["owned-bot"]).await;
+
+    let sid = "group-1:dddddddd";
+    mock.sessions.lock().await.push(Session {
+        id: sid.to_string(),
+        group_id: "group-1".to_string(),
+        session_title: Some("Uncollect via query".to_string()),
+        env: None,
+        status: SessionStatus::Running,
+        session_kind: SessionKind::Chat,
+        participants: vec![Participant::bot("owned-bot", ParticipantRole::Driver)],
+        group_version: Some(1),
+        caller_id: None,
+        input: None,
+        output: None,
+        error_message: None,
+        callback_status: None,
+        activation_count: 1,
+        caller_principal: None,
+        created_by: None,
+        created_at: 1,
+        updated_at: 1,
+        completed_at: None,
+        meta: None,
+        current_msg_seq: 0,
+        participant_join_seq: None,
+    });
+    // Seed as collected.
+    mock.collected
+        .lock()
+        .await
+        .insert((sid.to_string(), "owned-bot".to_string()));
+
+    // Human uncollect naming a bot the human does NOT own -> 403.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/sessions/{sid}/collect?participant=unauthorized-bot"))
+                .header("content-type", "application/json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let body: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+            .unwrap();
+    assert_eq!(body["error"], "forbidden");
+
+    // Human uncollect naming an OWNED bot via the query string -> 200.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/sessions/{sid}/collect?participant=owned-bot"))
+                .header("content-type", "application/json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+            .unwrap();
+    assert_eq!(body["collected"], false);
+    assert_eq!(body["session_id"], sid);
+
+    // Idempotent repeat -> 200, and the collected entry is gone.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/sessions/{sid}/collect?participant=owned-bot"))
+                .header("content-type", "application/json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        !mock.collected
+            .lock()
+            .await
+            .contains(&(sid.to_string(), "owned-bot".to_string())),
+        "collected set must be empty after uncollect"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
