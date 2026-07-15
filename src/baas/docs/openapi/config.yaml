@@ -1,0 +1,480 @@
+openapi: 3.1.0
+info:
+  title: API — 配置管理
+  version: "2026-06-30"
+  description: >
+    secbaas 配置管理分组（**当前态**）。提供租户管理、系统配置、设备模板和 QPM 配置的
+    增删改查能力。
+
+    **认证**：使用 Buservice 会话 Cookie（`bcs_session`）。
+
+servers:
+  - url: https://secbaas.alipay.com
+    description: 生产环境
+  - url: https://secbaas-pre.alipay.com
+    description: 预发环境（staging）
+
+security:
+  - ssoCookie: []
+
+tags:
+  - name: tenants
+    description: 租户管理 —— 创建、查询、更新、删除租户。
+  - name: system-configs
+    description: 系统配置 —— 系统级键值配置管理。
+  - name: device-templates
+    description: 设备模板 —— 设备模板的创建、查询、更新、状态转换。
+  - name: bot-qpm
+    description: Bot QPM 配置 —— Bot 的 QPM（每分钟查询数）限流配置管理。
+
+paths:
+  # ── Tenants ──────────────────────────────────────────────────────────────
+  /api/v1/tenants:
+    get:
+      operationId: listTenants
+      tags: [tenants]
+      summary: 查询租户列表
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+    post:
+      operationId: createTenant
+      tags: [tenants]
+      summary: 创建租户
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTenantRequest" }
+      responses:
+        "200":
+          description: 创建成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "409": { $ref: "./_shared.yaml#/components/responses/Conflict" }
+
+  /api/v1/tenants/{name}:
+    parameters:
+      - { name: name, in: path, required: true, schema: { type: string }, description: 租户名称。 }
+    get:
+      operationId: getTenant
+      tags: [tenants]
+      summary: 查询单个租户
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+    put:
+      operationId: updateTenant
+      tags: [tenants]
+      summary: 更新租户
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTenantRequest" }
+      responses:
+        "200":
+          description: 更新成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+    delete:
+      operationId: deleteTenant
+      tags: [tenants]
+      summary: 删除租户
+      responses:
+        "200":
+          description: 删除成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/tenants/{name}/config:
+    get:
+      operationId: getTenantConfig
+      tags: [tenants]
+      summary: 查询租户配置
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  # ── System Configs ───────────────────────────────────────────────────────
+  /api/v1/system-configs:
+    get:
+      operationId: listSystemConfigs
+      tags: [system-configs]
+      summary: 查询系统配置列表
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+    post:
+      operationId: createSystemConfig
+      tags: [system-configs]
+      summary: 创建系统配置
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSystemConfigRequest" }
+      responses:
+        "200":
+          description: 创建成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "409": { $ref: "./_shared.yaml#/components/responses/Conflict" }
+
+  /api/v1/system-configs/{conf_key}:
+    parameters:
+      - { name: conf_key, in: path, required: true, schema: { type: string }, description: 配置键名。 }
+    get:
+      operationId: getSystemConfig
+      tags: [system-configs]
+      summary: 查询单个系统配置
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+    put:
+      operationId: updateSystemConfig
+      tags: [system-configs]
+      summary: 更新系统配置
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSystemConfigRequest" }
+      responses:
+        "200":
+          description: 更新成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+    delete:
+      operationId: deleteSystemConfig
+      tags: [system-configs]
+      summary: 删除系统配置
+      responses:
+        "200":
+          description: 删除成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  # ── Device Templates ────────────────────────────────────────────────────
+  /api/v1/device-templates:
+    get:
+      operationId: listDeviceTemplates
+      tags: [device-templates]
+      summary: 查询设备模板列表
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+    post:
+      operationId: createDeviceTemplate
+      tags: [device-templates]
+      summary: 创建设备模板
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDeviceTemplateRequest" }
+      responses:
+        "200":
+          description: 创建成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+
+  /api/v1/device-templates/online:
+    get:
+      operationId: listOnlineDeviceTemplates
+      tags: [device-templates]
+      summary: 查询在线设备模板列表
+      description: 仅返回 ONLINE 状态的设备模板。
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+
+  /api/v1/device-templates/by-template-id/{template_id}:
+    get:
+      operationId: getDeviceTemplateByTemplateId
+      tags: [device-templates]
+      summary: 按 template_id 查询设备模板
+      parameters:
+        - { name: template_id, in: path, required: true, schema: { type: string }, description: 模板 ID。 }
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/device-templates/resolve:
+    get:
+      operationId: resolveDeviceTemplate
+      tags: [device-templates]
+      summary: 解析设备模板
+      description: 根据查询参数解析匹配的设备模板配置。
+      responses:
+        "200":
+          description: 解析成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/device-templates/{template_uuid}:
+    parameters:
+      - { name: template_uuid, in: path, required: true, schema: { type: string }, description: 模板 UUID。 }
+    get:
+      operationId: getDeviceTemplateByUuid
+      tags: [device-templates]
+      summary: 按 UUID 查询设备模板
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+    put:
+      operationId: updateDeviceTemplate
+      tags: [device-templates]
+      summary: 更新设备模板
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDeviceTemplateRequest" }
+      responses:
+        "200":
+          description: 更新成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/device-templates/{template_uuid}/status-transitions:
+    post:
+      operationId: transitionDeviceTemplateStatus
+      tags: [device-templates]
+      summary: 设备模板状态转换
+      parameters:
+        - { name: template_uuid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StatusTransitionRequest" }
+      responses:
+        "200":
+          description: 状态转换成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/device-templates/{template_uuid}/delete:
+    post:
+      operationId: deleteDeviceTemplate
+      tags: [device-templates]
+      summary: 删除设备模板
+      parameters:
+        - { name: template_uuid, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 删除成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  # ── Bot QPM ──────────────────────────────────────────────────────────────
+  /api/v1/bot-qpm:
+    get:
+      operationId: listBotQpmConfigs
+      tags: [bot-qpm]
+      summary: 查询 Bot QPM 配置列表
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+    post:
+      operationId: upsertBotQpmConfig
+      tags: [bot-qpm]
+      summary: 创建或更新 Bot QPM 配置
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpsertBotQpmRequest" }
+      responses:
+        "200":
+          description: 操作成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+
+  /api/v1/bot-qpm/{bot_id}:
+    parameters:
+      - { name: bot_id, in: path, required: true, schema: { type: integer }, description: Bot ID。 }
+    get:
+      operationId: getBotQpmConfig
+      tags: [bot-qpm]
+      summary: 查询单个 Bot QPM 配置
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+    put:
+      operationId: updateBotQpmConfig
+      tags: [bot-qpm]
+      summary: 更新 Bot QPM 配置
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateBotQpmRequest" }
+      responses:
+        "200":
+          description: 更新成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+    delete:
+      operationId: deleteBotQpmConfig
+      tags: [bot-qpm]
+      summary: 删除 Bot QPM 配置
+      responses:
+        "200":
+          description: 删除成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    ssoCookie:
+      $ref: "./_shared.yaml#/components/securitySchemes/ssoCookie"
+
+  schemas:
+    # ── Tenant ──
+    CreateTenantRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        display_name:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+
+    UpdateTenantRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+
+    # ── System Config ──
+    CreateSystemConfigRequest:
+      type: object
+      properties:
+        conf_key:
+          type: string
+        conf_value:
+          type: string
+        description:
+          type: string
+          nullable: true
+
+    UpdateSystemConfigRequest:
+      type: object
+      properties:
+        conf_value:
+          type: string
+        description:
+          type: string
+          nullable: true
+
+    # ── Device Template ──
+    CreateDeviceTemplateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        template_id:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+
+    UpdateDeviceTemplateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+        config:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    StatusTransitionRequest:
+      type: object
+      properties:
+        target_status:
+          type: string
+          enum: [ONLINE, OFFLINE, DEPRECATED]
+
+    # ── Bot QPM ──
+    BotQpmConfig:
+      type: object
+      properties:
+        bot_id:
+          type: integer
+        qpm_limit:
+          type: integer
+          description: 每分钟查询次数上限。
+
+    UpsertBotQpmRequest:
+      type: object
+      properties:
+        bot_id:
+          type: integer
+        qpm_limit:
+          type: integer
+
+    UpdateBotQpmRequest:
+      type: object
+      properties:
+        qpm_limit:
+          type: integer

@@ -1,0 +1,120 @@
+openapi: 3.1.0
+info:
+  title: API — 本地 PaaS 与机器管理
+  version: "2026-06-30"
+  description: >
+    secbaas 本地 PaaS 分组（**当前态**）。提供 LOCAL 平台的机器信息查询和用户机器列表管理。
+
+    **认证**：使用 Buservice 会话 Cookie（`bcs_session`）。
+
+servers:
+  - url: https://secbaas.alipay.com
+    description: 生产环境
+  - url: https://secbaas-pre.alipay.com
+    description: 预发环境（staging）
+
+security:
+  - ssoCookie: []
+
+tags:
+  - name: local-paas
+    description: 本地 PaaS 管理 —— 机器信息查询。
+
+paths:
+  /api/v1/local/machines/{machine_id}/info:
+    get:
+      operationId: getLocalMachineInfo
+      tags: [local-paas]
+      summary: 查询本地机器信息
+      description: 查询 LOCAL 平台的机器详细信息。
+      parameters:
+        - { name: machine_id, in: path, required: true, schema: { type: string }, description: 机器 ID。 }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/local/machines/{machine_id}/res-dirs:
+    get:
+      operationId: getLocalMachineResDirs
+      tags: [local-paas]
+      summary: 查询机器资源目录
+      parameters:
+        - { name: machine_id, in: path, required: true, schema: { type: string } }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/local/users/{user_id}/machines:
+    get:
+      operationId: listUserMachines
+      tags: [local-paas]
+      summary: 查询用户机器列表
+      description: 查询指定用户关联的 LOCAL 平台机器列表。
+      parameters:
+        - { name: user_id, in: path, required: true, schema: { type: string }, description: 用户 ID。 }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserMachineListResponse" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    ssoCookie:
+      $ref: "./_shared.yaml#/components/securitySchemes/ssoCookie"
+
+  schemas:
+    UserMachine:
+      type: object
+      properties:
+        template_id:
+          type: integer
+        user_id:
+          type: string
+        machine_id:
+          type: string
+        machine_info:
+          type: object
+          additionalProperties: true
+        last_heartbeat:
+          type: string
+          format: date-time
+        connected_server_instance:
+          type: string
+        status:
+          type: string
+          enum: [ONLINE, OFFLINE, DISABLED]
+        env:
+          type: string
+
+    UserMachineListData:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/UserMachine" }
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    UserMachineListResponse:
+      allOf:
+        - { type: object, properties: { code: { type: integer }, message: { type: string } } }
+        - type: object
+          properties: { data: { $ref: "#/components/schemas/UserMachineListData" } }

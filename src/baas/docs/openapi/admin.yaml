@@ -1,0 +1,346 @@
+openapi: 3.1.0
+info:
+  title: API — 管理后台
+  version: "2026-06-30"
+  description: >
+    secbaas 管理后台分组（**当前态**）。提供 API Key 管理和发布/设备状态强制变更等
+    管理功能。
+
+    **认证**：使用 Buservice 会话 Cookie（`bcs_session`）。API Key 管理需要管理员权限。
+
+servers:
+  - url: https://secbaas.alipay.com
+    description: 生产环境
+  - url: https://secbaas-pre.alipay.com
+    description: 预发环境（staging）
+
+security:
+  - ssoCookie: []
+
+tags:
+  - name: api-keys
+    description: API Key 管理 —— 创建、查询、更新、状态变更、Bot 授权管理。
+  - name: admin-utils
+    description: 管理工具 —— 发布强制成功、设备状态强制变更（测试/开发用途）。
+
+paths:
+  /api/v1/admin/api-keys:
+    get:
+      operationId: listApiKeys
+      tags: [api-keys]
+      summary: 查询 API Key 列表
+      description: 管理员查询所有 API Key 列表。
+      parameters:
+        - { name: app_id, in: query, required: false, schema: { type: string }, description: 按应用 ID 过滤。 }
+        - { name: app_type, in: query, required: false, schema: { type: string }, description: 按应用类型过滤。 }
+        - { name: status, in: query, required: false, schema: { type: string, enum: [ACTIVE, INACTIVE, REVOKED] }, description: 按状态过滤。 }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./_shared.yaml#/components/responses/Forbidden" }
+    post:
+      operationId: createApiKey
+      tags: [api-keys]
+      summary: 创建 API Key
+      description: 管理员创建新的 API Key。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateApiKeyRequest" }
+      responses:
+        "200":
+          description: 创建成功，返回完整 API Key。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./_shared.yaml#/components/responses/Forbidden" }
+
+  /api/v1/admin/api-keys/{api_key_prefix}:
+    parameters:
+      - { name: api_key_prefix, in: path, required: true, schema: { type: string }, description: API Key 前缀。 }
+    get:
+      operationId: getApiKeyDetail
+      tags: [api-keys]
+      summary: 查询 API Key 详情
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./_shared.yaml#/components/responses/Forbidden" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/admin/api-keys/{api_key_prefix}/config:
+    put:
+      operationId: updateApiKeyConfig
+      tags: [api-keys]
+      summary: 更新 API Key 配置
+      parameters:
+        - { name: api_key_prefix, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateApiKeyConfigRequest" }
+      responses:
+        "200":
+          description: 更新成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./_shared.yaml#/components/responses/Forbidden" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/admin/api-keys/{api_key_prefix}/status:
+    patch:
+      operationId: updateApiKeyStatus
+      tags: [api-keys]
+      summary: 更新 API Key 状态
+      description: 支持操作：activate（启用）、deactivate（停用）、revoke（吊销）。
+      parameters:
+        - { name: api_key_prefix, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StatusActionRequest" }
+      responses:
+        "200":
+          description: 状态更新成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./_shared.yaml#/components/responses/Forbidden" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+        "409": { $ref: "./_shared.yaml#/components/responses/Conflict" }
+
+  /api/v1/admin/api-keys/{api_key_prefix}/allowed-bots:
+    get:
+      operationId: getAllowedBots
+      tags: [api-keys]
+      summary: 查询 API Key 允许的 Bot 列表
+      parameters:
+        - { name: api_key_prefix, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./_shared.yaml#/components/responses/Forbidden" }
+
+  /api/v1/admin/api-keys/{api_key_prefix}/allowed-bots/grant:
+    post:
+      operationId: grantBotAccess
+      tags: [api-keys]
+      summary: 授权 Bot 访问
+      parameters:
+        - { name: api_key_prefix, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BotIdRequest" }
+      responses:
+        "200":
+          description: 授权成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./_shared.yaml#/components/responses/Forbidden" }
+        "409": { $ref: "./_shared.yaml#/components/responses/Conflict" }
+
+  /api/v1/admin/api-keys/{api_key_prefix}/allowed-bots/revoke:
+    post:
+      operationId: revokeBotAccess
+      tags: [api-keys]
+      summary: 撤销 Bot 访问权限
+      parameters:
+        - { name: api_key_prefix, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BotIdRequest" }
+      responses:
+        "200":
+          description: 撤销成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "./_shared.yaml#/components/responses/Forbidden" }
+
+  /api/v1/admin/force-success:
+    post:
+      operationId: forcePublishSuccess
+      tags: [admin-utils]
+      summary: 强制发布成功
+      description: >
+        **测试/开发工具**。给定 publish_id，绕过正常状态机，将发布和相关实体
+        全部强制设为成功状态。不执行任何实际设备部署或销毁操作。
+      parameters:
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ForceSuccessRequest" }
+      responses:
+        "200":
+          description: 强制成功操作结果。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+
+  /api/v1/admin/devices/{device_uuid}/status:
+    post:
+      operationId: updateDeviceStatus
+      tags: [admin-utils]
+      summary: 强制更新设备状态
+      description: >
+        **测试/开发工具**。绕过正常状态机直接设置设备状态。
+      parameters:
+        - { name: device_uuid, in: path, required: true, schema: { type: string } }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDeviceStatusRequest" }
+      responses:
+        "200":
+          description: 状态更新成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    ssoCookie:
+      $ref: "./_shared.yaml#/components/securitySchemes/ssoCookie"
+
+  schemas:
+    CreateApiKeyRequest:
+      type: object
+      required: [app_type, app_id]
+      properties:
+        app_type:
+          type: string
+          maxLength: 64
+          description: 应用类型（app/bot/system/health-checker）。
+        app_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: 应用 ID。
+        key_name:
+          type: string
+          maxLength: 128
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        rate_limit_rpm:
+          type: integer
+          nullable: true
+          description: 每分钟请求数限制。
+        rate_limit_rpd:
+          type: integer
+          nullable: true
+          description: 每天请求数限制。
+        owner:
+          type: string
+          maxLength: 64
+          nullable: true
+        tenant:
+          type: string
+          maxLength: 64
+          nullable: true
+        policy:
+          type: string
+          nullable: true
+          description: 权限策略（JSON 格式）。
+
+    UpdateApiKeyConfigRequest:
+      type: object
+      properties:
+        key_name:
+          type: string
+          maxLength: 128
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        app_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          nullable: true
+        app_type:
+          type: string
+          maxLength: 64
+          nullable: true
+        rate_limit_rpm:
+          type: integer
+          nullable: true
+        rate_limit_rpd:
+          type: integer
+          nullable: true
+        owner:
+          type: string
+          maxLength: 64
+          nullable: true
+        tenant:
+          type: string
+          maxLength: 64
+          nullable: true
+        policy:
+          type: string
+          nullable: true
+
+    StatusActionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [activate, deactivate, revoke]
+
+    BotIdRequest:
+      type: object
+      required: [bot_id]
+      properties:
+        bot_id:
+          type: string
+          minLength: 1
+
+    ForceSuccessRequest:
+      type: object
+      required: [publish_id, modifier]
+      properties:
+        publish_id:
+          type: integer
+          description: 要强制成功的发布 ID。
+        modifier:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: 执行强制操作的用户。
+
+    UpdateDeviceStatusRequest:
+      type: object
+      required: [status, operator]
+      properties:
+        status:
+          type: string
+          minLength: 1
+          maxLength: 32
+        operator:
+          type: string
+          minLength: 1
+          maxLength: 128

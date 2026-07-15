@@ -1,0 +1,305 @@
+openapi: 3.1.0
+info:
+  title: API — Bot 运行时（命令/HTTP/WS）
+  version: "2026-06-30"
+  description: >
+    secbaas Bot 运行时分组（**当前态**）。提供与运行中 Bot 设备的交互能力：
+    Shell 命令执行、HTTP 透明代理、WebSocket 连接信息、HTTP 连接信息和文件夹操作。
+
+    **认证**：使用 Buservice 会话 Cookie（`bcs_session`）。
+
+servers:
+  - url: https://secbaas.alipay.com
+    description: 生产环境
+  - url: https://secbaas-pre.alipay.com
+    description: 预发环境（staging）
+
+security:
+  - ssoCookie: []
+
+tags:
+  - name: bot-cmd
+    description: 命令执行 —— 在 Bot 设备上执行 Shell 命令。
+  - name: bot-http
+    description: HTTP 代理 —— 透明代理 HTTP 请求到 Bot 设备。
+  - name: bot-conn
+    description: 连接信息 —— 获取 HTTP 和 WebSocket 连接信息。
+  - name: bot-folder
+    description: 文件夹操作 —— 在 LOCAL 平台的设备上打开文件夹。
+
+paths:
+  /api/v1/bots/{tenant}/{bot_uuid}/execute-command:
+    parameters:
+      - { name: tenant, in: path, required: true, schema: { type: string }, description: 租户名称。 }
+      - { name: bot_uuid, in: path, required: true, schema: { type: string }, description: Bot UUID。 }
+    post:
+      operationId: executeCommandOnBot
+      tags: [bot-cmd]
+      summary: 在 Bot 设备上执行命令
+      description: >
+        在 Bot 的活跃设备上执行 Shell 命令。自动选择一个活跃设备，通过 PaaS 层执行。
+        支持设置超时时间和环境变量。
+      parameters:
+        - { name: device_affinity, in: query, required: false, schema: { type: string }, description: 设备亲缘性键，用于一致性哈希的粘性设备选择。 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExecuteCommandRequest" }
+      responses:
+        "200":
+          description: 命令执行结果。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommandResultResponse" }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+        "503":
+          description: 无可用活跃设备。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+
+  /api/v1/bots/{tenant}/{bot_uuid}/invoke-http/{port}/{path}:
+    parameters:
+      - { name: tenant, in: path, required: true, schema: { type: string } }
+      - { name: bot_uuid, in: path, required: true, schema: { type: string } }
+      - { name: port, in: path, required: true, schema: { type: integer, minimum: 1, maximum: 65535 }, description: 目标端口。 }
+      - { name: path, in: path, required: true, schema: { type: string }, description: 转发到设备的请求路径。 }
+    get:
+      operationId: invokeHttpGet
+      tags: [bot-http]
+      summary: HTTP GET 代理到 Bot 设备
+      description: 透明代理 HTTP GET 请求到 Bot 的活跃设备。
+      parameters:
+        - { name: device_affinity, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: 代理响应（透传设备的状态码、头和体）。
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+        "503":
+          description: 无可用活跃设备。
+    post:
+      operationId: invokeHttpPost
+      tags: [bot-http]
+      summary: HTTP POST 代理到 Bot 设备
+      description: 透明代理 HTTP POST 请求到 Bot 的活跃设备。
+      parameters:
+        - { name: device_affinity, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: 代理响应（透传设备的状态码、头和体）。
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+        "503":
+          description: 无可用活跃设备。
+    put:
+      operationId: invokeHttpPut
+      tags: [bot-http]
+      summary: HTTP PUT 代理到 Bot 设备
+      parameters:
+        - { name: device_affinity, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: 代理响应。
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+    delete:
+      operationId: invokeHttpDelete
+      tags: [bot-http]
+      summary: HTTP DELETE 代理到 Bot 设备
+      parameters:
+        - { name: device_affinity, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: 代理响应。
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/bots/{bot_uuid}/http-info:
+    get:
+      operationId: getBotHttpConnectionInfo
+      tags: [bot-conn]
+      summary: 获取 Bot HTTP 连接信息
+      description: >
+        解析 Bot 的 HTTP 连接信息。返回通过 agentclawproxy 网关直连的 URL 和 Token。
+      parameters:
+        - { name: bot_uuid, in: path, required: true, schema: { type: string } }
+        - { name: port, in: query, required: true, schema: { type: integer, minimum: 1, maximum: 65535 }, description: 目标 HTTP 端口。 }
+        - { name: path, in: query, required: true, schema: { type: string }, description: 设备上的 HTTP 路径。 }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+        - { name: device_affinity, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: 连接信息。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HttpConnectionInfoResponse" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+        "503":
+          description: 无可用活跃设备。
+
+  /api/v1/bots/{bot_uuid}/ws-info:
+    get:
+      operationId: getBotWsConnectionInfo
+      tags: [bot-conn]
+      summary: 获取 Bot WebSocket 连接信息
+      description: >
+        解析 Bot 的 WebSocket 连接信息。返回通过 agentclawproxy 网关直连的 WebSocket URL、
+        Token 和过期时间。
+      parameters:
+        - { name: bot_uuid, in: path, required: true, schema: { type: string } }
+        - { name: port, in: query, required: true, schema: { type: integer, minimum: 1, maximum: 65535 }, description: 目标 WebSocket 端口。 }
+        - { name: path, in: query, required: true, schema: { type: string }, description: 设备上的 WebSocket 路径。 }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+        - { name: device_affinity, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: WebSocket 连接信息。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WsConnectionInfoResponse" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+        "503":
+          description: 无可用活跃设备。
+
+  /api/v1/bots/{tenant}/{bot_uuid}/open-folder:
+    parameters:
+      - { name: tenant, in: path, required: true, schema: { type: string } }
+      - { name: bot_uuid, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: openFolderOnBot
+      tags: [bot-folder]
+      summary: 打开 Bot 设备上的文件夹
+      description: >
+        在 Bot 设备的文件资源管理器中打开指定文件夹。
+        仅支持 LOCAL 平台，非 LOCAL 平台返回 501。
+      parameters:
+        - { name: device_affinity, in: query, required: false, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OpenFolderRequest" }
+      responses:
+        "200":
+          description: 操作成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessResponse" }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+        "501":
+          description: 非 LOCAL 平台不支持此操作。
+
+components:
+  securitySchemes:
+    ssoCookie:
+      $ref: "./_shared.yaml#/components/securitySchemes/ssoCookie"
+
+  schemas:
+    ExecuteCommandRequest:
+      type: object
+      required: [cmd]
+      properties:
+        cmd:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          description: 要执行的 Shell 命令。
+        env:
+          type: object
+          additionalProperties: { type: string }
+          nullable: true
+          description: 命令的可选环境变量。
+        timeout_seconds:
+          type: integer
+          minimum: 1
+          maximum: 300
+          default: 30
+          description: 命令超时时间（秒）。
+
+    CommandResult:
+      type: object
+      properties:
+        exit_code:
+          type: integer
+          nullable: true
+          description: 命令退出码。
+        stdout:
+          type: string
+          description: 标准输出。
+        stderr:
+          type: string
+          description: 标准错误输出。
+        timed_out:
+          type: boolean
+          default: false
+
+    CommandResultResponse:
+      allOf:
+        - { type: object, properties: { code: { type: integer }, message: { type: string } } }
+        - type: object
+          properties: { data: { $ref: "#/components/schemas/CommandResult" } }
+
+    HttpConnectionInfoResponse:
+      allOf:
+        - { type: object, properties: { code: { type: integer }, message: { type: string } } }
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                http_url:
+                  type: string
+                token:
+                  type: string
+                target:
+                  type: string
+
+    WsConnectionInfoResponse:
+      allOf:
+        - { type: object, properties: { code: { type: integer }, message: { type: string } } }
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                ws_url:
+                  type: string
+                token:
+                  type: string
+                target:
+                  type: string
+                expires_at:
+                  type: string
+                  format: date-time
+
+    OpenFolderRequest:
+      type: object
+      properties:
+        folder_path:
+          type: string
+          maxLength: 1024
+          nullable: true
+          description: "要打开的文件夹路径。为 null 时使用平台默认路径。"
+
+    SuccessResponse:
+      allOf:
+        - { type: object, properties: { code: { type: integer }, message: { type: string } } }
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                success:
+                  type: boolean
+                message:
+                  type: string

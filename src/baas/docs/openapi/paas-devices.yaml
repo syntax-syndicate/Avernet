@@ -1,0 +1,301 @@
+openapi: 3.1.0
+info:
+  title: API — PaaS 设备管理
+  version: "2026-06-30"
+  description: >
+    secbaas PaaS 设备管理分组（**当前态**）。提供 PaaS 层设备的生命周期管理：
+    创建、销毁、命令执行、WebSocket 连接信息、HTTP 代理、文件夹操作和 TTL 管理。
+
+    **认证**：使用 Buservice 会话 Cookie（`bcs_session`）。
+
+servers:
+  - url: https://secbaas.alipay.com
+    description: 生产环境
+  - url: https://secbaas-pre.alipay.com
+    description: 预发环境（staging）
+
+security:
+  - ssoCookie: []
+
+tags:
+  - name: paas-devices
+    description: PaaS 设备管理 —— 创建、销毁、命令、连接信息与操作。
+  - name: devices
+    description: 设备信息查询。
+
+paths:
+  /api/v1/devices/{device_uuid}:
+    get:
+      operationId: getDeviceByUuid
+      tags: [devices]
+      summary: 查询设备信息
+      description: 根据设备全局唯一 UUID 查询设备完整信息。
+      parameters:
+        - { name: device_uuid, in: path, required: true, schema: { type: string }, description: "设备 UUID，格式：DEVICE-{hex}。" }
+      responses:
+        "200":
+          description: 查询成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceResponse" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/paas/devices:
+    post:
+      operationId: createPaasDevice
+      tags: [paas-devices]
+      summary: 创建设备
+      description: >
+        通过 PaaS 服务门面创建设备。根据平台类型（ARCA/SIGMA/LOCAL）选择不同的创建策略。
+      parameters:
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDeviceRequest" }
+      responses:
+        "200":
+          description: 创建成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceCreationResultResponse" }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+
+  /api/v1/paas/devices/{paas_device_id}:
+    delete:
+      operationId: destroyPaasDevice
+      tags: [paas-devices]
+      summary: 销毁设备
+      parameters:
+        - { name: paas_device_id, in: path, required: true, schema: { type: string }, description: PaaS 设备 ID。 }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 销毁成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/paas/devices/{paas_device_id}/commands:
+    post:
+      operationId: executePaasDeviceCommand
+      tags: [paas-devices]
+      summary: 在设备上执行命令
+      parameters:
+        - { name: paas_device_id, in: path, required: true, schema: { type: string } }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExecuteCommandRequest" }
+      responses:
+        "200":
+          description: 命令执行结果。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommandResultResponse" }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/paas/devices/{paas_device_id}/ws-info:
+    get:
+      operationId: getPaasDeviceWsInfo
+      tags: [paas-devices]
+      summary: 获取设备 WebSocket 连接信息
+      parameters:
+        - { name: paas_device_id, in: path, required: true, schema: { type: string } }
+        - { name: port, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 65535 } }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: WebSocket 连接信息。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/paas/devices/{paas_device_id}/info:
+    get:
+      operationId: getPaasDeviceInfo
+      tags: [paas-devices]
+      summary: 获取 PaaS 设备详情
+      parameters:
+        - { name: paas_device_id, in: path, required: true, schema: { type: string } }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 设备详情。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/paas/devices/{paas_device_id}/outbound-rule:
+    put:
+      operationId: updatePaasDeviceOutboundRule
+      tags: [paas-devices]
+      summary: 更新设备出站规则
+      parameters:
+        - { name: paas_device_id, in: path, required: true, schema: { type: string } }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OutboundRuleRequest" }
+      responses:
+        "200":
+          description: 更新成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+  /api/v1/paas/devices/{paas_device_id}/invoke-http/{port}/{path}:
+    parameters:
+      - { name: paas_device_id, in: path, required: true, schema: { type: string } }
+      - { name: port, in: path, required: true, schema: { type: integer, minimum: 1, maximum: 65535 } }
+      - { name: path, in: path, required: true, schema: { type: string } }
+      - { name: tenant, in: query, required: true, schema: { type: string } }
+    get:
+      operationId: invokeHttpOnPaasDevice
+      tags: [paas-devices]
+      summary: HTTP 代理到设备
+      description: 透明代理 HTTP 请求到 PaaS 设备的内部服务。
+      responses:
+        "200":
+          description: 代理响应。
+    post:
+      operationId: invokeHttpPostOnPaasDevice
+      tags: [paas-devices]
+      summary: HTTP POST 代理到设备
+      responses:
+        "200":
+          description: 代理响应。
+    put:
+      operationId: invokeHttpPutOnPaasDevice
+      tags: [paas-devices]
+      summary: HTTP PUT 代理到设备
+      responses:
+        "200":
+          description: 代理响应。
+    delete:
+      operationId: invokeHttpDeleteOnPaasDevice
+      tags: [paas-devices]
+      summary: HTTP DELETE 代理到设备
+      responses:
+        "200":
+          description: 代理响应。
+
+  /api/v1/paas/devices/{paas_device_id}/open-folder:
+    post:
+      operationId: openFolderOnPaasDevice
+      tags: [paas-devices]
+      summary: 打开设备文件夹
+      parameters:
+        - { name: paas_device_id, in: path, required: true, schema: { type: string } }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 操作成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+
+  /api/v1/paas/devices/{paas_device_id}/ttl:
+    put:
+      operationId: updatePaasDeviceTtl
+      tags: [paas-devices]
+      summary: 更新设备 TTL
+      parameters:
+        - { name: paas_device_id, in: path, required: true, schema: { type: string } }
+        - { name: tenant, in: query, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TtlUpdateRequest" }
+      responses:
+        "200":
+          description: 更新成功。
+          headers: { X-Trace-Id: { $ref: "./_shared.yaml#/components/headers/XTraceId" } }
+        "400": { $ref: "./_shared.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "./_shared.yaml#/components/responses/Unauthorized" }
+        "404": { $ref: "./_shared.yaml#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    ssoCookie:
+      $ref: "./_shared.yaml#/components/securitySchemes/ssoCookie"
+
+  schemas:
+    DeviceResponse:
+      type: object
+      properties:
+        device_uuid:
+          type: string
+        status:
+          type: string
+        provider_type:
+          type: string
+        provider_device_id:
+          type: string
+          nullable: true
+        tenant:
+          type: string
+        gmt_create:
+          type: string
+          format: date-time
+          nullable: true
+        gmt_modified:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateDeviceRequest:
+      type: object
+      properties:
+        provider_type:
+          type: string
+          enum: [ARCA, SIGMA, LOCAL]
+        config:
+          type: object
+          additionalProperties: true
+
+    DeviceCreationResultResponse:
+      allOf:
+        - { type: object, properties: { code: { type: integer }, message: { type: string } } }
+        - type: object
+          properties: { data: { type: object } }
+
+    ExecuteCommandRequest:
+      type: object
+      properties:
+        cmd:
+          type: string
+        timeout_seconds:
+          type: integer
+          default: 30
+
+    CommandResultResponse:
+      allOf:
+        - { type: object, properties: { code: { type: integer }, message: { type: string } } }
+        - type: object
+          properties: { data: { type: object } }
+
+    OutboundRuleRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+
+    TtlUpdateRequest:
+      type: object
+      properties:
+        ttl_minutes:
+          type: integer
+          minimum: 1
