@@ -1144,13 +1144,20 @@ impl SessionRepoPort for MySqlSessionStore {
     }
 
     async fn collect(&self, session_id: &str, bot_uuid: &str) -> ServiceResult<()> {
-        let sql = "UPDATE bcs_session_participants \
-                   SET collected = 1 \
-                   WHERE env = ? AND session_id = ? AND bot_uuid = ?";
-        let result = self
+        // Existence check via SELECT, NOT affected_rows: the MySQL connection does
+        // not set CLIENT_FOUND_ROWS (see bcs-config-api/src/mysql.rs to_mysql_url and
+        // bcs-db-mysql/src/manager.rs), so mysql_async reports CHANGED rows. A repeat
+        // collect (collected already 1) would yield affected_rows=0 and falsely look
+        // like a non-participant. SELECTing the side-table row first lets us
+        // distinguish non-participant (row absent) from already-collected (row present)
+        // independent of changed-rows semantics; the subsequent unconditional UPDATE is
+        // then idempotent by construction.
+        let check_sql = "SELECT 1 FROM bcs_session_participants \
+                         WHERE env = ? AND session_id = ? AND bot_uuid = ? LIMIT 1";
+        let rows = self
             .db
-            .execute(DbStatement::with_params(
-                sql,
+            .query(DbStatement::with_params(
+                check_sql,
                 vec![
                     DbValue::from(self.env.as_str()),
                     DbValue::from(session_id),
@@ -1159,11 +1166,25 @@ impl SessionRepoPort for MySqlSessionStore {
             ))
             .await
             .map_err(|e| ServiceError::InternalError(format!("session db: {e}")))?;
-        if result.affected_rows == 0 {
+        if rows.is_empty() {
             return Err(ServiceError::SessionNotFound(format!(
                 "participant {bot_uuid} not in session {session_id}"
             )));
         }
+        let update_sql = "UPDATE bcs_session_participants \
+                          SET collected = 1 \
+                          WHERE env = ? AND session_id = ? AND bot_uuid = ?";
+        self.db
+            .execute(DbStatement::with_params(
+                update_sql,
+                vec![
+                    DbValue::from(self.env.as_str()),
+                    DbValue::from(session_id),
+                    DbValue::from(bot_uuid),
+                ],
+            ))
+            .await
+            .map_err(|e| ServiceError::InternalError(format!("session db: {e}")))?;
         Ok(())
     }
 
